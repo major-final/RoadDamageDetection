@@ -154,13 +154,21 @@ if image_file is not None:
                 severity = "Mild"
             
             st.write(f"### Severity Level: {severity}")
+           # Function to play sound
+            def play_alert_sound():
+                sound_file = "mixkit-signal-alert-771.wav"
+                # Ensure this file is in the same directory
+                with open(sound_file, "rb") as audio_file:
+                    audio_bytes = audio_file.read()
+                st.audio(audio_bytes, format="audio/wav")
             
+            # Inside the severity detection block:
             if severity in ["Severe", "Moderate"]:
                 st.error("⚠️ WARNING: Dangerous road damage detected! Drive cautiously! ⚠️", icon="⚠️")
-                if user_email:
-                    send_email(user_email, severity)
-        else:
-            st.write("### Severity Level: No damage detected")
+                play_alert_sound()  # Play alert sound when damage is detected
+
+            
+           
 
         def generate_pdf(detections, severity, annotated_image):
             buffer = BytesIO()
