@@ -155,12 +155,27 @@ if image_file is not None:
             
             st.write(f"### Severity Level: {severity}")
            # Function to play sound
+            import streamlit.components.v1 as components
+
             def play_alert_sound():
                 sound_file = "mixkit-signal-alert-771.wav"
-                # Ensure this file is in the same directory
-                with open(sound_file, "rb") as audio_file:
-                    audio_bytes = audio_file.read()
-                st.audio(audio_bytes, format="audio/wav")
+                if os.path.exists(sound_file):
+                    # Convert to Base64 to embed in HTML
+                    import base64
+                    with open(sound_file, "rb") as audio_file:
+                        audio_bytes = audio_file.read()
+                    audio_b64 = base64.b64encode(audio_bytes).decode()
+            
+                    # Auto-play sound using JavaScript
+                    sound_html = f"""
+                    <audio autoplay>
+                        <source src="data:audio/wav;base64,{audio_b64}" type="audio/wav">
+                    </audio>
+                    """
+                    components.html(sound_html, height=0)
+                else:
+                    st.warning("Sound file not found! Please check the path.")
+
             
             # Inside the severity detection block:
             if severity in ["Severe", "Moderate"]:
