@@ -21,10 +21,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-HERE = Path(_file_).parent
+HERE = Path(__file__).parent
 ROOT = HERE.parent
 
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
 MODEL_LOCAL_PATH = ROOT / "./models/YOLOv8_Small_RDD.pt"
@@ -111,8 +111,8 @@ if image_file is not None:
             file_name="RDD_Prediction.png",
             mime="image/png"
         )
+        
         # Determine Severity Level (based on highest confidence score)
-        # Determine Severity Level (based on confidence and box size)
         if detections:
             max_confidence = max([det.score for det in detections])  # Highest confidence score
             image_area = w_ori * h_ori  # Total image area
@@ -158,16 +158,6 @@ if image_file is not None:
                 label_text = f"  - {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
                 pdf.drawString(50, y_position, label_text)
                 y_position -= 20
-        
-            # Save annotated image to buffer
-            image_buffer = BytesIO()
-            annotated_image.save(image_buffer, format="PNG")
-            image_buffer.seek(0)
-        
-            # Save the image to the PDF
-            image_path = "./temp_predicted_image.png"
-            annotated_image.save(image_path)  # Save image temporarily
-            pdf.drawImage(image_path, 50, 200, width=500, height=400)  # Add image to PDF
         
             pdf.save()
             buffer.seek(0)
