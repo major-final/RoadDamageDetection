@@ -1,5 +1,7 @@
 import os
 import logging
+import smtplib
+from email.mime.text import MIMEText
 from pathlib import Path
 from typing import NamedTuple
 
@@ -13,6 +15,8 @@ from PIL import Image
 from io import BytesIO
 
 from sample_utils.download import download_file
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 st.set_page_config(
     page_title="Image Detection",
@@ -52,9 +56,31 @@ class Detection(NamedTuple):
     score: float
     box: np.ndarray
 
+def send_email(user_email, severity):
+    sender_email = "21071A6612@vnrvjiet.in"
+    sender_password = "rsyr xula xiuy nmjo"
+    
+    subject = "Road Damage Alert!"
+    body = f"\n⚠️ WARNING: Dangerous road damage detected!\nSeverity Level: {severity}\nPlease take necessary precautions."
+    
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = sender_email
+    msg["To"] = user_email
+    
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(sender_email, sender_password)
+            server.sendmail(sender_email, user_email, msg.as_string())
+        st.success(f"Email alert sent to {user_email}")
+    except Exception as e:
+        st.error(f"Error sending email: {e}")
+
 st.title("Road Damage Detection - Image")
 st.write("Detect the road damage in an image. Upload the image and start detecting. This section can be useful for examining baseline data.")
 
+# Retrieve user email from session state
+user_email = st.session_state.get("user_email", "")
 image_file = st.file_uploader("Upload Image", type=['png', 'jpg'])
 
 score_threshold = st.slider("Confidence Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.05)
@@ -111,69 +137,53 @@ if image_file is not None:
             file_name="RDD_Prediction.png",
             mime="image/png"
         )
-        
-        # Determine Severity Level (based on highest confidence score)
+
         if detections:
-            max_confidence = max([det.score for det in detections])  # Highest confidence score
-            image_area = w_ori * h_ori  # Total image area
-        
-            # Check if any bounding box is large
+            max_confidence = max([det.score for det in detections])  
+            image_area = w_ori * h_ori  
+            
             large_box_detected = any(
                 ((det.box[2] - det.box[0]) * (det.box[3] - det.box[1])) / image_area > 0.3 for det in detections
             )
-        
-            # Determine severity
+            
             if max_confidence > 0.6 or large_box_detected:
                 severity = "Severe"
             elif max_confidence > 0.4:
                 severity = "Moderate"
             else:
                 severity = "Mild"
-        
+            
             st.write(f"### Severity Level: {severity}")
+            
+            if severity in ["Severe", "Moderate"]:
+                st.error("⚠️ WARNING: Dangerous road damage detected! Drive cautiously! ⚠️", icon="⚠️")
+                if user_email:
+                    send_email(user_email, severity)
         else:
             st.write("### Severity Level: No damage detected")
 
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        
-        # Function to generate the PDF report
         def generate_pdf(detections, severity, annotated_image):
             buffer = BytesIO()
             pdf = canvas.Canvas(buffer, pagesize=letter)
             pdf.setTitle("Road Damage Detection Report")
-        
-            # Title
+            
             pdf.setFont("Helvetica-Bold", 16)
             pdf.drawString(200, 750, "Road Damage Detection Report")
-        
-            # Add severity level
+            
             pdf.setFont("Helvetica", 12)
             pdf.drawString(50, 700, f"Severity Level: {severity}")
-        
-            # Add detected objects
+            
             pdf.drawString(50, 670, "Detected Objects:")
             y_position = 650
             for det in detections:
                 label_text = f"  - {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
                 pdf.drawString(50, y_position, label_text)
                 y_position -= 20
-            # Save annotated image to buffer
-            image_buffer = BytesIO()
-            annotated_image.save(image_buffer, format="PNG")
-            image_buffer.seek(0)
-        
-            # Save the image to the PDF
-            image_path = "./temp_predicted_image.png"
-            annotated_image.save(image_path)  # Save image temporarily
-            pdf.drawImage(image_path, 50, 200, width=500, height=400)  # Add image to PDF
-
-        
+            
             pdf.save()
             buffer.seek(0)
             return buffer
         
-        # If detections exist, generate the report
         if detections:
             pdf_buffer = generate_pdf(detections, severity, _downloadImages)
         
