@@ -61,6 +61,7 @@ score_threshold = st.slider("Confidence Threshold", min_value=0.0, max_value=1.0
 st.write("Lower the threshold if there is no damage detected, and increase the threshold if there are false predictions.")
 
 if image_file is not None:
+
     # Load the image
     image = Image.open(image_file)
     
@@ -131,6 +132,10 @@ if image_file is not None:
                 severity = "Mild"
         
             st.write(f"### Severity Level: {severity}")
+            
+            # Animated Alert
+            if severity in ["Severe", "Moderate"]:
+                st.error("⚠️ WARNING: Dangerous road damage detected! Drive cautiously! ⚠️", icon="⚠️")
         else:
             st.write("### Severity Level: No damage detected")
 
