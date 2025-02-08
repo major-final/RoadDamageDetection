@@ -113,23 +113,20 @@ if image_file is not None:
             mime="image/png"
         )
         # Determine Severity Level (based on highest confidence score)
-        # Calculate severity level based on confidence and size
+        # Determine Severity Level (based on confidence and box size)
         if detections:
             max_confidence = max([det.score for det in detections])  # Highest confidence score
             image_area = w_ori * h_ori  # Total image area
-            
-            # Get the largest bounding box area
-            max_bbox_area = max([
-                (det.box[2] - det.box[0]) * (det.box[3] - det.box[1])
-                for det in detections
-            ]) 
         
-            bbox_ratio = max_bbox_area / image_area  # Ratio of damage size to image size
+            # Check if any bounding box is large
+            large_box_detected = any(
+                ((det.box[2] - det.box[0]) * (det.box[3] - det.box[1])) / image_area > 0.3 for det in detections
+            )
         
-            # Determine severity level
-            if max_confidence > 0.6 and bbox_ratio > 0.3:
+            # Determine severity
+            if max_confidence > 0.6 or large_box_detected:
                 severity = "Severe"
-            elif max_confidence > 0.4 or bbox_ratio > 0.15:
+            elif max_confidence > 0.4:
                 severity = "Moderate"
             else:
                 severity = "Mild"
@@ -137,6 +134,7 @@ if image_file is not None:
             st.write(f"### Severity Level: {severity}")
         else:
             st.write("### Severity Level: No damage detected")
+
 
 
 
