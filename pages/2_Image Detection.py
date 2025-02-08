@@ -112,18 +112,20 @@ if image_file is not None:
             file_name="RDD_Prediction.png",
             mime="image/png"
         )
-
-        # Determine Severity Level (based on confidence scores)
+        # Determine Severity Level (based on highest confidence score)
         if detections:
-            avg_confidence = np.mean([det.score for det in detections])
-
-            if avg_confidence > 0.75:
+            max_confidence = max([det.score for det in detections])  # Use highest confidence score
+        
+            if max_confidence > 0.7:
                 severity = "Severe"
-            elif avg_confidence > 0.5:
+            elif max_confidence > 0.5:
                 severity = "Moderate"
             else:
                 severity = "Mild"
-
+        
             st.write(f"### Severity Level: {severity}")
         else:
             st.write("### Severity Level: No damage detected")
+
+
+
