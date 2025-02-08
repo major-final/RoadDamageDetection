@@ -141,31 +141,35 @@ if image_file is not None:
         if detections:
             image_area = w_ori * h_ori  
         
-            # Assign severity weights based on damage type
             severity_weights = {
-                "Potholes": 1.0,
-                "Alligator Crack": 0.8,
-                "Transverse Crack": 0.6,
-                "Longitudinal Crack": 0.5
+                "Potholes": 1.2,
+                "Alligator Crack": 1.0,
+                "Transverse Crack": 0.8,
+                "Longitudinal Crack": 0.6
             }
         
             severity_score = 0
         
             for det in detections:
                 box_area = (det.box[2] - det.box[0]) * (det.box[3] - det.box[1])
-                box_ratio = box_area / image_area  # Relative size of damage
-                weight = severity_weights.get(det.label, 0.5)  # Default weight if label is unknown
-                severity_score += det.score * box_ratio * weight  # Weighted scoring
+                box_ratio = box_area / image_area  
+                weight = severity_weights.get(det.label, 0.6)  
+                
+                # Boost severity if confidence is high
+                confidence_boost = (det.score ** 1.5)  
         
-            # Normalize severity score for better classification
-            if severity_score > 0.4:
+                severity_score += confidence_boost * box_ratio * weight  
+        
+            # Normalize the severity score for better classification
+            if severity_score > 0.3:
                 severity = "Severe"
-            elif severity_score > 0.2:
+            elif severity_score > 0.15:
                 severity = "Moderate"
             else:
                 severity = "Mild"
         
             st.write(f"### Severity Level: {severity}")
+
 
            # Function to play sound
             import streamlit.components.v1 as components
@@ -191,7 +195,7 @@ if image_file is not None:
 
             
             # Inside the severity detection block:
-            if severity in ["Severe"]:
+            if severity in ["Severe","Moderate"]:
                 st.error("⚠️ WARNING: Dangerous road damage detected! Drive cautiously! ⚠️", icon="⚠️")
                 play_alert_sound()  # Play alert sound when damage is detected
 
