@@ -135,6 +135,57 @@ if image_file is not None:
         else:
             st.write("### Severity Level: No damage detected")
 
-
-
-
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        
+        # Function to generate the PDF report
+        def generate_pdf(detections, severity, annotated_image):
+            buffer = BytesIO()
+            pdf = canvas.Canvas(buffer, pagesize=letter)
+            pdf.setTitle("Road Damage Detection Report")
+        
+            # Title
+            pdf.setFont("Helvetica-Bold", 16)
+            pdf.drawString(200, 750, "Road Damage Detection Report")
+        
+            # Add severity level
+            pdf.setFont("Helvetica", 12)
+            pdf.drawString(50, 700, f"Severity Level: {severity}")
+        
+            # Add detected objects
+            pdf.drawString(50, 670, "Detected Objects:")
+            y_position = 650
+            for det in detections:
+                label_text = f"  - {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
+                pdf.drawString(50, y_position, label_text)
+                y_position -= 20
+        
+            # Save annotated image to buffer
+            image_buffer = BytesIO()
+            annotated_image.save(image_buffer, format="PNG")
+            image_buffer.seek(0)
+        
+            # Save the image to the PDF
+            image_path = "./temp_predicted_image.png"
+            annotated_image.save(image_path)  # Save image temporarily
+            pdf.drawImage(image_path, 50, 200, width=500, height=400)  # Add image to PDF
+        
+            pdf.save()
+            buffer.seek(0)
+            return buffer
+        
+        # If detections exist, generate the report
+        if detections:
+            pdf_buffer = generate_pdf(detections, severity, _downloadImages)
+        
+            st.download_button(
+                label="Download Report",
+                data=pdf_buffer,
+                file_name="Road_Damage_Report.pdf",
+                mime="application/pdf"
+            )
+        
+        
+        
+        
+        
