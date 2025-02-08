@@ -139,21 +139,34 @@ if image_file is not None:
         )
 
         if detections:
-            max_confidence = max([det.score for det in detections])  
             image_area = w_ori * h_ori  
-            
-            large_box_detected = any(
-                ((det.box[2] - det.box[0]) * (det.box[3] - det.box[1])) / image_area > 0.3 for det in detections
-            )
-            
-            if max_confidence > 0.6 or large_box_detected:
+        
+            # Assign severity weights based on damage type
+            severity_weights = {
+                "Potholes": 1.0,
+                "Alligator Crack": 0.8,
+                "Transverse Crack": 0.6,
+                "Longitudinal Crack": 0.5
+            }
+        
+            severity_score = 0
+        
+            for det in detections:
+                box_area = (det.box[2] - det.box[0]) * (det.box[3] - det.box[1])
+                box_ratio = box_area / image_area  # Relative size of damage
+                weight = severity_weights.get(det.label, 0.5)  # Default weight if label is unknown
+                severity_score += det.score * box_ratio * weight  # Weighted scoring
+        
+            # Normalize severity score for better classification
+            if severity_score > 0.4:
                 severity = "Severe"
-            elif max_confidence > 0.4:
+            elif severity_score > 0.2:
                 severity = "Moderate"
             else:
                 severity = "Mild"
-            
+        
             st.write(f"### Severity Level: {severity}")
+
            # Function to play sound
             import streamlit.components.v1 as components
 
