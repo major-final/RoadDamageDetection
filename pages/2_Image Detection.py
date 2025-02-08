@@ -113,12 +113,23 @@ if image_file is not None:
             mime="image/png"
         )
         # Determine Severity Level (based on highest confidence score)
+        # Calculate severity level based on confidence and size
         if detections:
-            max_confidence = max([det.score for det in detections])  # Use highest confidence score
+            max_confidence = max([det.score for det in detections])  # Highest confidence score
+            image_area = w_ori * h_ori  # Total image area
+            
+            # Get the largest bounding box area
+            max_bbox_area = max([
+                (det.box[2] - det.box[0]) * (det.box[3] - det.box[1])
+                for det in detections
+            ]) 
         
-            if max_confidence > 0.7:
+            bbox_ratio = max_bbox_area / image_area  # Ratio of damage size to image size
+        
+            # Determine severity level
+            if max_confidence > 0.6 and bbox_ratio > 0.3:
                 severity = "Severe"
-            elif max_confidence > 0.5:
+            elif max_confidence > 0.4 or bbox_ratio > 0.15:
                 severity = "Moderate"
             else:
                 severity = "Mild"
