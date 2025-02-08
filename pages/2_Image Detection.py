@@ -142,33 +142,39 @@ if image_file is not None:
             image_area = w_ori * h_ori  
         
             severity_weights = {
-                "Potholes": 1.2,
-                "Alligator Crack": 1.0,
-                "Transverse Crack": 0.8,
-                "Longitudinal Crack": 0.6
+                "Potholes": 1.5,
+                "Alligator Crack": 1.2,
+                "Transverse Crack": 1.0,
+                "Longitudinal Crack": 0.8
             }
         
             severity_score = 0
+            num_detections = len(detections)
         
             for det in detections:
                 box_area = (det.box[2] - det.box[0]) * (det.box[3] - det.box[1])
                 box_ratio = box_area / image_area  
-                weight = severity_weights.get(det.label, 0.6)  
-                
-                # Boost severity if confidence is high
-                confidence_boost = (det.score ** 1.5)  
+                weight = severity_weights.get(det.label, 1.0)  
         
+                # Apply a stronger boost for higher confidence
+                confidence_boost = (det.score ** 2)  
+        
+                # Increase severity score based on size, confidence, and weight
                 severity_score += confidence_boost * box_ratio * weight  
         
-            # Normalize the severity score for better classification
-            if severity_score > 0.3:
+            # Normalize the severity score
+            severity_score /= max(1, num_detections)  # Prevent division by zero
+        
+            # Adjusted thresholds
+            if severity_score > 0.25 or num_detections > 3:
                 severity = "Severe"
-            elif severity_score > 0.15:
+            elif severity_score > 0.12 or num_detections > 1:
                 severity = "Moderate"
             else:
                 severity = "Mild"
         
             st.write(f"### Severity Level: {severity}")
+
 
 
            # Function to play sound
