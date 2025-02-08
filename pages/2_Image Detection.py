@@ -178,7 +178,7 @@ if image_file is not None:
 
             
             # Inside the severity detection block:
-            if severity in ["Severe", "Moderate"]:
+            if severity in ["Severe"]:
                 st.error("⚠️ WARNING: Dangerous road damage detected! Drive cautiously! ⚠️", icon="⚠️")
                 play_alert_sound()  # Play alert sound when damage is detected
 
