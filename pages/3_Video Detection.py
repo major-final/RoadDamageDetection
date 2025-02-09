@@ -18,46 +18,44 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-HERE = Path(_file_).parent
+# Fixing Path Issues in Streamlit
+HERE = Path(".").resolve()
 ROOT = HERE.parent
 
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
-MODEL_LOCAL_PATH = ROOT / "./models/YOLOv8_Small_RDD.pt"
+MODEL_LOCAL_PATH = ROOT / "models/YOLOv8_Small_RDD.pt"
 download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
 
-# Twilio credentials (replace with your actual credentials)
-TWILIO_ACCOUNT_SID = "ACf0a5c5baca010efec65515fa992f159a"
-TWILIO_AUTH_TOKEN = "b3bb4783e3dbd516fa3a7126bfa0d496"
-TWILIO_MESSAGING_SERVICE_SID = "MG13c1731526dcc18b284ab9d5156440ad"
-TO_PHONE_NUMBER = "+919100650255"
-FROM_PHONE_NUMBER = "+18127821176"  # Fixed phone number format
-
+# Load Twilio credentials from Streamlit Secrets
+TWILIO_ACCOUNT_SID = st.secrets["twilio"]["account_sid"]
+TWILIO_AUTH_TOKEN = st.secrets["twilio"]["auth_token"]
+TWILIO_MESSAGING_SERVICE_SID = st.secrets["twilio"]["messaging_service_sid"]
+TO_PHONE_NUMBER = st.secrets["twilio"]["to_phone"]
+FROM_PHONE_NUMBER = st.secrets["twilio"]["from_phone"]
 
 def send_notification(damage_type):
     """Send an SMS notification when a crack is detected."""
     client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     message = client.messages.create(
         body=f"Alert: {damage_type} detected on the road! Immediate action may be required.",
-        from_=FROM_PHONE_NUMBER,  # Fixed string format
+        from_=FROM_PHONE_NUMBER,
         to=TO_PHONE_NUMBER
     )
     print(f"Notification sent: {message.sid}")
-
 
 def write_bytesio_to_file(file_path, file_bytes):
     """Writes an uploaded file (BytesIO) to disk."""
     with open(file_path, "wb") as out_file:
         out_file.write(file_bytes.read())
 
-
-# Session-specific caching
+# Load YOLO model with session-specific caching
 cache_key = "yolov8smallrdd"
 if cache_key in st.session_state:
     net = st.session_state[cache_key]
 else:
-    net = YOLO(MODEL_LOCAL_PATH)
+    net = YOLO(str(MODEL_LOCAL_PATH))
     st.session_state[cache_key] = net
 
 CLASSES = [
@@ -73,19 +71,17 @@ class Detection(NamedTuple):
     score: float
     box: np.ndarray
 
-
 # Ensure temp directory exists
-if not os.path.exists('./temp'):
-    os.makedirs('./temp')
+TEMP_DIR = Path("./temp")
+TEMP_DIR.mkdir(exist_ok=True)
 
-temp_file_input = "./temp/video_input.mp4"
-temp_file_infer = "./temp/video_infer.mp4"
-
+temp_file_input = TEMP_DIR / "video_input.mp4"
+temp_file_infer = TEMP_DIR / "video_infer.mp4"
 
 def process_video(video_file, score_threshold):
     """Processes uploaded video, detects road damage, and sends notifications."""
     write_bytesio_to_file(temp_file_input, video_file)
-    video_capture = cv2.VideoCapture(temp_file_input)
+    video_capture = cv2.VideoCapture(str(temp_file_input))
 
     if not video_capture.isOpened():
         st.error('Error opening the video file')
@@ -100,7 +96,7 @@ def process_video(video_file, score_threshold):
     image_location = st.empty()
 
     fourcc_mp4 = cv2.VideoWriter_fourcc(*'mp4v')
-    cv2_writer = cv2.VideoWriter(temp_file_infer, fourcc_mp4, _fps, (_width, _height))
+    cv2_writer = cv2.VideoWriter(str(temp_file_infer), fourcc_mp4, _fps, (_width, _height))
 
     _frame_counter = 0
     damage_detected = False
@@ -140,7 +136,6 @@ def process_video(video_file, score_threshold):
     st.success("Video Processed!")
     with open(temp_file_infer, "rb") as f:
         st.download_button("Download Processed Video", data=f, file_name="RDD_Prediction.mp4", mime="video/mp4")
-
 
 st.title("Road Damage Detection - Video")
 st.write("Upload a video to detect road damage and receive notifications for detected issues.")
