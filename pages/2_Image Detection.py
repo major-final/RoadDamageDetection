@@ -16,7 +16,7 @@ from sample_utils.download import download_file
 
 st.set_page_config(
     page_title="Image Detection",
-    page_icon="\ud83d\udcf7",
+    page_icon="📷",
     layout="centered",
     initial_sidebar_state="expanded"
 )
@@ -26,7 +26,7 @@ ROOT = HERE.parent
 
 logger = logging.getLogger(__name__)
 
-MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
+MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"  # noqa: E501
 MODEL_LOCAL_PATH = ROOT / "./models/YOLOv8_Small_RDD.pt"
 download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
 
@@ -53,14 +53,15 @@ class Detection(NamedTuple):
     box: np.ndarray
 
 st.title("Road Damage Detection - Image")
-st.write("Detect the road damage in an image. Upload the image and start detecting. This section can be useful for examining baseline data.")
+st.write("Detect the road damage in using an Image input. Upload the image and start detecting. This section can be useful for examining baseline data.")
 
 image_file = st.file_uploader("Upload Image", type=['png', 'jpg'])
 
 score_threshold = st.slider("Confidence Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.05)
-st.write("Lower the threshold if there is no damage detected, and increase the threshold if there are false predictions.")
+st.write("Lower the threshold if there is no damage detected, and increase the threshold if there is false prediction.")
 
 if image_file is not None:
+
     # Load the image
     image = Image.open(image_file)
     
@@ -68,26 +69,27 @@ if image_file is not None:
 
     # Perform inference
     _image = np.array(image)
-    h_ori, w_ori = _image.shape[:2]
+    h_ori = _image.shape[0]
+    w_ori = _image.shape[1]
 
-    image_resized = cv2.resize(_image, (640, 640), interpolation=cv2.INTER_AREA)
+    image_resized = cv2.resize(_image, (640, 640), interpolation = cv2.INTER_AREA)
     results = net.predict(image_resized, conf=score_threshold)
     
-    detections = []  # Store detections
+    # Save the results
     for result in results:
         boxes = result.boxes.cpu().numpy()
         detections = [
-            Detection(
-                class_id=int(_box.cls),
-                label=CLASSES[int(_box.cls)],
-                score=float(_box.conf),
-                box=_box.xyxy[0].astype(int),
+           Detection(
+               class_id=int(_box.cls),
+               label=CLASSES[int(_box.cls)],
+               score=float(_box.conf),
+               box=_box.xyxy[0].astype(int),
             )
             for _box in boxes
         ]
 
     annotated_frame = results[0].plot()
-    _image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation=cv2.INTER_AREA)
+    _image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation = cv2.INTER_AREA)
 
     # Original Image
     with col1:
@@ -105,56 +107,9 @@ if image_file is not None:
         _downloadImages.save(buffer, format="PNG")
         _downloadImagesByte = buffer.getvalue()
 
-        st.download_button(
+        downloadButton = st.download_button(
             label="Download Prediction Image",
             data=_downloadImagesByte,
             file_name="RDD_Prediction.png",
             mime="image/png"
         )
-
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        
-        # Function to generate the PDF report
-        def generate_pdf(detections, annotated_image):
-            buffer = BytesIO()
-            pdf = canvas.Canvas(buffer, pagesize=letter)
-            pdf.setTitle("Road Damage Detection Report")
-        
-            # Title
-            pdf.setFont("Helvetica-Bold", 16)
-            pdf.drawString(200, 750, "Road Damage Detection Report")
-        
-            # Add detected objects
-            pdf.setFont("Helvetica", 12)
-            pdf.drawString(50, 700, "Detected Objects:")
-            y_position = 670
-            for det in detections:
-                label_text = f"  - {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
-                pdf.drawString(50, y_position, label_text)
-                y_position -= 20
-            
-            # Save annotated image to buffer
-            image_buffer = BytesIO()
-            annotated_image.save(image_buffer, format="PNG")
-            image_buffer.seek(0)
-        
-            # Save the image to the PDF
-            image_path = "./temp_predicted_image.png"
-            annotated_image.save(image_path)  # Save image temporarily
-            pdf.drawImage(image_path, 50, 200, width=500, height=400)  # Add image to PDF
-        
-            pdf.save()
-            buffer.seek(0)
-            return buffer
-        
-        # If detections exist, generate the report
-        if detections:
-            pdf_buffer = generate_pdf(detections, _downloadImages)
-        
-            st.download_button(
-                label="Download Report",
-                data=pdf_buffer,
-                file_name="Road_Damage_Report.pdf",
-                mime="application/pdf"
-            )
