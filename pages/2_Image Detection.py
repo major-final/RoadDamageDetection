@@ -6,6 +6,7 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 import streamlit as st
+from twilio.rest import Client
 
 # Deep learning framework
 from ultralytics import YOLO
@@ -29,6 +30,24 @@ logger = logging.getLogger(__name__)
 MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"  # noqa: E501
 MODEL_LOCAL_PATH = ROOT / "./models/YOLOv8_Small_RDD.pt"
 download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
+
+# Twilio Credentials
+TWILIO_ACCOUNT_SID = "your_account_sid"
+TWILIO_AUTH_TOKEN = "your_auth_token"
+TWILIO_PHONE_NUMBER = "your_twilio_phone_number"
+USER_PHONE_NUMBER = "recipient_phone_number"
+
+def send_sms_alert():
+    try:
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        message = client.messages.create(
+            body="Road damage detected! Please take necessary action.",
+            from_=TWILIO_PHONE_NUMBER,
+            to=USER_PHONE_NUMBER
+        )
+        logger.info(f"SMS alert sent: {message.sid}")
+    except Exception as e:
+        logger.error(f"Failed to send SMS: {e}")
 
 # Session-specific caching
 # Load the model
@@ -61,7 +80,6 @@ score_threshold = st.slider("Confidence Threshold", min_value=0.0, max_value=1.0
 st.write("Lower the threshold if there is no damage detected, and increase the threshold if there is false prediction.")
 
 if image_file is not None:
-
     # Load the image
     image = Image.open(image_file)
     
@@ -72,9 +90,10 @@ if image_file is not None:
     h_ori = _image.shape[0]
     w_ori = _image.shape[1]
 
-    image_resized = cv2.resize(_image, (640, 640), interpolation = cv2.INTER_AREA)
+    image_resized = cv2.resize(_image, (640, 640), interpolation=cv2.INTER_AREA)
     results = net.predict(image_resized, conf=score_threshold)
     
+    detections = []
     # Save the results
     for result in results:
         boxes = result.boxes.cpu().numpy()
@@ -88,8 +107,11 @@ if image_file is not None:
             for _box in boxes
         ]
 
+    if detections:
+        send_sms_alert()  # Send SMS alert only if damage is detected
+
     annotated_frame = results[0].plot()
-    _image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation = cv2.INTER_AREA)
+    _image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation=cv2.INTER_AREA)
 
     # Original Image
     with col1:
