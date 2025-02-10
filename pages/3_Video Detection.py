@@ -91,7 +91,7 @@ temp_file_input = TEMP_DIR / "video_input.mp4"
 temp_file_infer = TEMP_DIR / "video_infer.mp4"
 
 def process_video(video_file, score_threshold):
-    """Processes uploaded video, detects road damage, and sends notifications."""
+    """Processes uploaded video, detects road damage, and sends only one notification per video."""
     write_bytesio_to_file(temp_file_input, video_file)
     video_capture = cv2.VideoCapture(str(temp_file_input))
 
@@ -111,7 +111,7 @@ def process_video(video_file, score_threshold):
     cv2_writer = cv2.VideoWriter(str(temp_file_infer), fourcc_mp4, _fps, (_width, _height))
 
     _frame_counter = 0
-    damage_detected = False
+    alert_sent = False  # Track if an alert has been sent
 
     while video_capture.isOpened():
         ret, frame = video_capture.read()
@@ -131,9 +131,9 @@ def process_video(video_file, score_threshold):
                     score=float(_box.conf),
                     box=_box.xyxy[0].astype(int),
                 )
-                if detection.score > score_threshold:
-                    damage_detected = True
-                    send_notification(detection.label)
+                if detection.score > score_threshold and not alert_sent:
+                    send_notification(detection.label)  # Send notification only once
+                    alert_sent = True  # Set flag to avoid further notifications
 
         _image_pred = cv2.resize(annotated_frame, (_width, _height), interpolation=cv2.INTER_AREA)
         cv2_writer.write(cv2.cvtColor(_image_pred, cv2.COLOR_RGB2BGR))
