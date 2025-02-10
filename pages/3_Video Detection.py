@@ -18,6 +18,35 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Debugging: Check if secrets are loaded
+st.write("Secrets available:", st.secrets.keys())
+
+# Load Twilio credentials from Streamlit Secrets
+if "twilio" in st.secrets:
+    TWILIO_ACCOUNT_SID = st.secrets["twilio"].get("account_sid", "")
+    TWILIO_AUTH_TOKEN = st.secrets["twilio"].get("auth_token", "")
+    TWILIO_MESSAGING_SERVICE_SID = st.secrets["twilio"].get("messaging_service_sid", "")
+    TO_PHONE_NUMBER = st.secrets["twilio"].get("to_phone", "")
+    FROM_PHONE_NUMBER = st.secrets["twilio"].get("from_phone", "")
+    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TO_PHONE_NUMBER, FROM_PHONE_NUMBER])
+else:
+    st.error("Twilio secrets not found! Check your secrets.toml configuration.")
+    TWILIO_ENABLED = False
+
+def send_notification(damage_type):
+    """Send an SMS notification when a crack is detected."""
+    if not TWILIO_ENABLED:
+        st.warning("Twilio is not configured correctly. Notifications are disabled.")
+        return
+    
+    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    message = client.messages.create(
+        body=f"Alert: {damage_type} detected on the road! Immediate action may be required.",
+        from_=FROM_PHONE_NUMBER,
+        to=TO_PHONE_NUMBER
+    )
+    print(f"Notification sent: {message.sid}")
+
 # Fixing Path Issues in Streamlit
 HERE = Path(".").resolve()
 ROOT = HERE.parent
@@ -27,23 +56,6 @@ logger = logging.getLogger(__name__)
 MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
 MODEL_LOCAL_PATH = ROOT / "models/YOLOv8_Small_RDD.pt"
 download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
-
-# Load Twilio credentials from Streamlit Secrets
-TWILIO_ACCOUNT_SID = st.secrets["twilio"]["account_sid"]
-TWILIO_AUTH_TOKEN = st.secrets["twilio"]["auth_token"]
-TWILIO_MESSAGING_SERVICE_SID = st.secrets["twilio"]["messaging_service_sid"]
-TO_PHONE_NUMBER = st.secrets["twilio"]["to_phone"]
-FROM_PHONE_NUMBER = st.secrets["twilio"]["from_phone"]
-
-def send_notification(damage_type):
-    """Send an SMS notification when a crack is detected."""
-    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    message = client.messages.create(
-        body=f"Alert: {damage_type} detected on the road! Immediate action may be required.",
-        from_=FROM_PHONE_NUMBER,
-        to=TO_PHONE_NUMBER
-    )
-    print(f"Notification sent: {message.sid}")
 
 def write_bytesio_to_file(file_path, file_bytes):
     """Writes an uploaded file (BytesIO) to disk."""
