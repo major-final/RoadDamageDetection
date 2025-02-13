@@ -26,8 +26,8 @@ if not MODEL_LOCAL_PATH.exists():
 # Load YOLO model
 model = YOLO(str(MODEL_LOCAL_PATH))
 
-# Class labels (Make sure this matches your YOLO model's labels)
-CLASSES = ["Pothole", "Crack"]  # Modify according to your dataset
+# Class labels (Ensure they match your YOLO model's labels)
+CLASSES = ["alligator", "longitudinal", "transversal", "pothole"]
 
 # Load Twilio credentials dynamically
 if "twilio" in st.secrets:
@@ -106,12 +106,18 @@ def process_video(video_file, score_threshold, user_phone_number):
             boxes = result.boxes.cpu().numpy()
             for _box in boxes:
                 class_id = int(_box.cls)
-                label = CLASSES[class_id] if class_id < len(CLASSES) else "Unknown"
+
+                # Ensure valid class ID mapping
+                if 0 <= class_id < len(CLASSES):
+                    label = CLASSES[class_id]
+                else:
+                    label = f"Unknown (ID: {class_id})"  # Debugging info
+
                 score = float(_box.conf)
-                
+
                 if score > score_threshold and not alert_sent:
                     send_sms_alert(user_phone_number, label)  # Send notification only once
-                    alert_sent = True  # Set flag to avoid further notifications
+                    alert_sent = True  # Prevent duplicate alerts
 
         _image_pred = cv2.resize(annotated_frame, (_width, _height), interpolation=cv2.INTER_AREA)
         cv2_writer.write(cv2.cvtColor(_image_pred, cv2.COLOR_RGB2BGR))
