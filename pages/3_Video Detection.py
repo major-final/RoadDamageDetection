@@ -48,12 +48,10 @@ def send_sms_alert(user_phone_number, most_frequent_damage):
         st.warning("Twilio is not configured correctly. Notifications are disabled.")
         return
 
-    # Validate phone number format
     if not user_phone_number.startswith("+"):
         st.error("Invalid phone number! Use international format (e.g., +1234567890)")
         return
 
-    # Ensure message content is not empty
     if not most_frequent_damage.strip():
         logging.error("Empty message detected. Skipping SMS.")
         return
@@ -165,3 +163,8 @@ def process_video(video_file, score_threshold, user_phone_number):
 
     st.success("Video Processed!")
     st.download_button("Download Report", data=open(temp_pdf_report, "rb"), file_name="damage_report.pdf", mime="application/pdf")
+
+if video_file and user_phone_number:
+    if st.button("Process Video"):
+        st.warning(f"Processing Video: {video_file.name}")
+        process_video(video_file, score_threshold, user_phone_number)
