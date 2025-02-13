@@ -63,7 +63,6 @@ def send_sms_alert(user_number):
         logger.error(f"Failed to send SMS: {e}")
         st.error(f"Failed to send SMS: {e}")
 
-# Function to generate PDF report
 def generate_pdf(detections):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -83,8 +82,10 @@ def generate_pdf(detections):
     pdf.ln(10)
 
     buffer = BytesIO()
-    pdf.output(buffer)
-    return buffer.getvalue()
+    pdf.output(buffer, 'F')  # Save to BytesIO object
+    buffer.seek(0)  # Move pointer to start
+    return buffer.read()  # Return bytes
+
 
 # Session-specific caching
 # Load the model
@@ -173,11 +174,11 @@ if image_file is not None:
             mime="image/png"
         )
 
-    # Generate and download PDF report
-    pdf_data = generate_pdf(detections)
-    st.download_button(
+   pdf_data = generate_pdf(detections)
+   st.download_button(
         label="Download Detection Report (PDF)",
         data=pdf_data,
         file_name="Detection_Report.pdf",
         mime="application/pdf"
     )
+
