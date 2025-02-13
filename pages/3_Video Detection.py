@@ -6,6 +6,7 @@ import numpy as np
 import streamlit as st
 from ultralytics import YOLO
 from twilio.rest import Client  # Twilio for SMS notifications
+from collections import Counter  # For tracking most frequent class
 from sample_utils.download import download_file
 
 st.set_page_config(
@@ -26,7 +27,7 @@ if not MODEL_LOCAL_PATH.exists():
 # Load YOLO model
 model = YOLO(str(MODEL_LOCAL_PATH))
 
-# Class labels (Ensure they match your YOLO model's labels)
+# Class labels
 CLASSES = ["alligator", "longitudinal", "transversal", "pothole"]
 
 # Load Twilio credentials dynamically
@@ -39,8 +40,8 @@ else:
     st.error("Twilio secrets not found! Check your secrets.toml configuration.")
     TWILIO_ENABLED = False
 
-def send_sms_alert(user_phone_number, damage_type):
-    """Send an SMS alert dynamically based on user input."""
+def send_sms_alert(user_phone_number, most_frequent_damage):
+    """Send an SMS alert for the most frequently detected damage."""
     if not TWILIO_ENABLED:
         st.warning("Twilio is not configured correctly. Notifications are disabled.")
         return
@@ -48,7 +49,7 @@ def send_sms_alert(user_phone_number, damage_type):
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         message = client.messages.create(
-            body=f"Alert: {damage_type} detected on the road! Immediate action may be required.",
+            body=f"Alert: The most common road damage detected is '{most_frequent_damage}'. Immediate action may be required.",
             from_=TWILIO_PHONE_NUMBER,
             to=user_phone_number
         )
@@ -71,7 +72,7 @@ video_file = st.file_uploader("Upload Video", type=["mp4"], disabled=False)
 score_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
 
 def process_video(video_file, score_threshold, user_phone_number):
-    """Processes uploaded video, detects road damage, and sends only one notification per video."""
+    """Processes uploaded video, detects road damage, and sends an alert for the most common type."""
     temp_file_input.write_bytes(video_file.read())
     video_capture = cv2.VideoCapture(str(temp_file_input))
 
@@ -91,7 +92,7 @@ def process_video(video_file, score_threshold, user_phone_number):
     cv2_writer = cv2.VideoWriter(str(temp_file_infer), fourcc_mp4, _fps, (_width, _height))
 
     _frame_counter = 0
-    alert_sent = False  # Track if an alert has been sent
+    damage_counter = Counter()  # Count detected damage types
 
     while video_capture.isOpened():
         ret, frame = video_capture.read()
@@ -107,17 +108,9 @@ def process_video(video_file, score_threshold, user_phone_number):
             for _box in boxes:
                 class_id = int(_box.cls)
 
-                # Ensure valid class ID mapping
                 if 0 <= class_id < len(CLASSES):
                     label = CLASSES[class_id]
-                else:
-                    label = f"Unknown (ID: {class_id})"  # Debugging info
-
-                score = float(_box.conf)
-
-                if score > score_threshold and not alert_sent:
-                    send_sms_alert(user_phone_number, label)  # Send notification only once
-                    alert_sent = True  # Prevent duplicate alerts
+                    damage_counter[label] += 1  # Count occurrences
 
         _image_pred = cv2.resize(annotated_frame, (_width, _height), interpolation=cv2.INTER_AREA)
         cv2_writer.write(cv2.cvtColor(_image_pred, cv2.COLOR_RGB2BGR))
@@ -128,6 +121,11 @@ def process_video(video_file, score_threshold, user_phone_number):
     inference_bar.empty()
     video_capture.release()
     cv2_writer.release()
+
+    # Determine most frequently detected damage type
+    if damage_counter:
+        most_frequent_damage = damage_counter.most_common(1)[0][0]
+        send_sms_alert(user_phone_number, most_frequent_damage)
 
     st.success("Video Processed!")
     with open(temp_file_infer, "rb") as f:
