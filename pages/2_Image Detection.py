@@ -7,7 +7,6 @@ import cv2
 import numpy as np
 import streamlit as st
 from twilio.rest import Client
-from fpdf import FPDF  # Import FPDF for PDF generation
 
 # Deep learning framework
 from ultralytics import YOLO
@@ -63,29 +62,6 @@ def send_sms_alert(user_number):
         logger.error(f"Failed to send SMS: {e}")
         st.error(f"Failed to send SMS: {e}")
 
-def generate_pdf(detections):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Arial", style='B', size=16)
-    pdf.cell(200, 10, "Road Damage Detection Report", ln=True, align='C')
-    pdf.ln(10)
-
-    pdf.set_font("Arial", size=12)
-    if detections:
-        pdf.cell(200, 10, "Detected Damage Details:", ln=True)
-        pdf.ln(5)
-        for detection in detections:
-            pdf.cell(200, 10, f"- {detection.label} (Confidence: {detection.score:.2f})", ln=True)
-    else:
-        pdf.cell(200, 10, "No road damage detected.", ln=True)
-    pdf.ln(10)
-
-    buffer = BytesIO()
-    pdf.output(buffer, dest='S').encode('latin1')  # Corrected line
-    return buffer.getvalue()  # Return bytes
-
-
 # Session-specific caching
 # Load the model
 cache_key = "yolov8smallrdd"
@@ -135,11 +111,11 @@ if image_file is not None:
     for result in results:
         boxes = result.boxes.cpu().numpy()
         detections = [
-            Detection(
-                class_id=int(_box.cls),
-                label=CLASSES[int(_box.cls)],
-                score=float(_box.conf),
-                box=_box.xyxy[0].astype(int),
+           Detection(
+               class_id=int(_box.cls),
+               label=CLASSES[int(_box.cls)],
+               score=float(_box.conf),
+               box=_box.xyxy[0].astype(int),
             )
             for _box in boxes
         ]
@@ -173,11 +149,3 @@ if image_file is not None:
             mime="image/png"
         )
 
-    # Generate and provide a PDF download button
-    pdf_data = generate_pdf(detections)
-    st.download_button(
-        label="Download Detection Report (PDF)",
-        data=pdf_data,
-        file_name="Detection_Report.pdf",
-        mime="application/pdf"
-    )
