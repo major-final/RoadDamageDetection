@@ -58,7 +58,7 @@ def send_sms_alert(user_phone_number, most_frequent_damage):
     
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        message_body = f"Alert:  '{most_frequent_damage}' detected. Immediate action may be required."
+        message_body = f"Alert:  '{most_frequent_damage}' crack detected. Immediate action may be required."
         message = client.messages.create(
             body=message_body,
             from_=TWILIO_PHONE_NUMBER,
