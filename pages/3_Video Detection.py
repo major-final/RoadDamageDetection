@@ -1,13 +1,16 @@
 import os
 import logging
 from pathlib import Path
-from typing import NamedTuple
+from typing import List, NamedTuple
 
 import cv2
 import numpy as np
 import streamlit as st
 from ultralytics import YOLO
 from twilio.rest import Client  # Twilio for SMS notifications
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from PIL import Image
 
 from sample_utils.download import download_file
 
@@ -18,76 +21,35 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Load Twilio credentials from Streamlit Secrets
+# Debugging: Check if secrets are loaded
+st.write("Secrets available:", st.secrets.keys())
+
+# Load Twilio credentials dynamically
 if "twilio" in st.secrets:
     TWILIO_ACCOUNT_SID = st.secrets["twilio"].get("account_sid", "")
     TWILIO_AUTH_TOKEN = st.secrets["twilio"].get("auth_token", "")
-    FROM_PHONE_NUMBER = st.secrets["twilio"].get("from_phone", "")
-    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, FROM_PHONE_NUMBER])
+    TWILIO_PHONE_NUMBER = st.secrets["twilio"].get("from_phone", "")
+    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER])
 else:
     st.error("Twilio secrets not found! Check your secrets.toml configuration.")
     TWILIO_ENABLED = False
 
-# User input for phone number
-user_phone_number = st.text_input("Enter your phone number (including country code)", "")
-
-def send_notification(damage_type):
-    """Send an SMS notification when road damage is detected."""
+def send_sms_alert(user_phone_number, damage_type):
+    """Send an SMS alert dynamically based on user input."""
     if not TWILIO_ENABLED:
         st.warning("Twilio is not configured correctly. Notifications are disabled.")
         return
-    if not user_phone_number:
-        st.warning("Please enter a valid phone number.")
-        return
-
+    
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         message = client.messages.create(
             body=f"Alert: {damage_type} detected on the road! Immediate action may be required.",
-            from_=FROM_PHONE_NUMBER,
+            from_=TWILIO_PHONE_NUMBER,
             to=user_phone_number
         )
-        st.success(f"Notification sent to {user_phone_number}")
-        logging.info(f"Notification sent: {message.sid}")
+        logging.info(f"SMS alert sent: {message.sid}")
     except Exception as e:
         logging.error(f"Failed to send SMS: {e}")
-        st.error(f"Failed to send SMS: {e}")
-
-# Fixing Path Issues in Streamlit
-HERE = Path(".").resolve()
-ROOT = HERE.parent
-
-logger = logging.getLogger(__name__)
-
-MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
-MODEL_LOCAL_PATH = ROOT / "models/YOLOv8_Small_RDD.pt"
-download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
-
-def write_bytesio_to_file(file_path, file_bytes):
-    """Writes an uploaded file (BytesIO) to disk."""
-    with open(file_path, "wb") as out_file:
-        out_file.write(file_bytes.read())
-
-# Load YOLO model with session-specific caching
-cache_key = "yolov8smallrdd"
-if cache_key in st.session_state:
-    net = st.session_state[cache_key]
-else:
-    net = YOLO(str(MODEL_LOCAL_PATH))
-    st.session_state[cache_key] = net
-
-CLASSES = [
-    "Longitudinal Crack",
-    "Transverse Crack",
-    "Alligator Crack",
-    "Potholes"
-]
-
-class Detection(NamedTuple):
-    class_id: int
-    label: str
-    score: float
-    box: np.ndarray
 
 # Ensure temp directory exists
 TEMP_DIR = Path("./temp")
@@ -96,9 +58,33 @@ TEMP_DIR.mkdir(exist_ok=True)
 temp_file_input = TEMP_DIR / "video_input.mp4"
 temp_file_infer = TEMP_DIR / "video_infer.mp4"
 
-def process_video(video_file, score_threshold):
-    """Processes uploaded video, detects road damage, and sends notifications."""
-    write_bytesio_to_file(temp_file_input, video_file)
+def generate_pdf_report(damage_type, snapshot_path):
+    """Generate a PDF report with damage details and snapshot."""
+    pdf_path = TEMP_DIR / "Detection_Report.pdf"
+    c = canvas.Canvas(str(pdf_path), pagesize=letter)
+    c.drawString(100, 750, "Road Damage Detection Report")
+    c.drawString(100, 730, f"Damage Type: {damage_type}")
+    c.drawString(100, 710, "Severity: Moderate/Severe")
+    c.drawString(100, 690, "Location: Unknown")
+    c.drawString(100, 670, "Date & Time: (Generated at runtime)")
+    if os.path.exists(snapshot_path):
+        img = Image.open(snapshot_path)
+        img.thumbnail((400, 300))
+        img.save(TEMP_DIR / "snapshot_resized.jpg")
+        c.drawImage(str(TEMP_DIR / "snapshot_resized.jpg"), 100, 450, width=400, height=300)
+    c.save()
+    return pdf_path
+
+st.title("Road Damage Detection - Video")
+st.write("Upload a video to detect road damage and receive notifications for detected issues.")
+
+user_phone_number = st.text_input("Enter your phone number for alerts:")
+video_file = st.file_uploader("Upload Video", type=["mp4"], disabled=False)
+score_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
+
+def process_video(video_file, score_threshold, user_phone_number):
+    """Processes uploaded video, detects road damage, and sends only one notification per video."""
+    temp_file_input.write_bytes(video_file.read())
     video_capture = cv2.VideoCapture(str(temp_file_input))
 
     if not video_capture.isOpened():
@@ -118,6 +104,7 @@ def process_video(video_file, score_threshold):
 
     _frame_counter = 0
     alert_sent = False  # Track if an alert has been sent
+    snapshot_path = TEMP_DIR / "snapshot.jpg"
 
     while video_capture.isOpened():
         ret, frame = video_capture.read()
@@ -125,21 +112,22 @@ def process_video(video_file, score_threshold):
             break
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = net.predict(frame, conf=score_threshold)
+        results = YOLO(str(MODEL_LOCAL_PATH)).predict(frame, conf=score_threshold)
         annotated_frame = results[0].plot()
 
         for result in results:
             boxes = result.boxes.cpu().numpy()
             for _box in boxes:
-                detection = Detection(
-                    class_id=int(_box.cls),
-                    label=CLASSES[int(_box.cls)],
-                    score=float(_box.conf),
-                    box=_box.xyxy[0].astype(int),
-                )
-                if detection.score > score_threshold and not alert_sent:
-                    send_notification(detection.label)  # Send notification only once
+                detection = {
+                    "class_id": int(_box.cls),
+                    "label": CLASSES[int(_box.cls)],
+                    "score": float(_box.conf),
+                    "box": _box.xyxy[0].astype(int),
+                }
+                if detection["score"] > score_threshold and not alert_sent:
+                    send_sms_alert(user_phone_number, detection["label"])  # Send notification only once
                     alert_sent = True  # Set flag to avoid further notifications
+                    cv2.imwrite(str(snapshot_path), cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
 
         _image_pred = cv2.resize(annotated_frame, (_width, _height), interpolation=cv2.INTER_AREA)
         cv2_writer.write(cv2.cvtColor(_image_pred, cv2.COLOR_RGB2BGR))
@@ -154,16 +142,12 @@ def process_video(video_file, score_threshold):
     st.success("Video Processed!")
     with open(temp_file_infer, "rb") as f:
         st.download_button("Download Processed Video", data=f, file_name="RDD_Prediction.mp4", mime="video/mp4")
+    
+    if alert_sent:
+        pdf_path = generate_pdf_report(detection["label"], snapshot_path)
+        with open(pdf_path, "rb") as f:
+            st.download_button("Download Detection Report", data=f, file_name="Detection_Report.pdf", mime="application/pdf")
 
-st.title("Road Damage Detection - Video")
-st.write("Upload a video to detect road damage and receive notifications for detected issues.")
-
-video_file = st.file_uploader("Upload Video", type=["mp4"], disabled=False)
-score_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
-
-if video_file and st.button("Process Video"):
-    if not user_phone_number:
-        st.error("Please enter your phone number before processing.")
-    else:
-        st.warning(f"Processing Video: {video_file.name}")
-        process_video(video_file, score_threshold)
+if video_file and user_phone_number and st.button("Process Video"):
+    st.warning(f"Processing Video: {video_file.name}")
+    process_video(video_file, score_threshold, user_phone_number)
