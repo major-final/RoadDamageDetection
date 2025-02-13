@@ -9,11 +9,6 @@ st.image("./resource/banner.png", use_column_width="always")
 st.divider()
 st.title("Road Damage Detection Application")
 
-# Email input field
-user_email = st.text_input("Enter your email for alerts:", "")
-if user_email:
-    st.session_state["user_email"] = user_email  # Store email in session state
-    st.success("Email saved! Alerts will be sent automatically when necessary.")
 
 st.markdown(
     """
