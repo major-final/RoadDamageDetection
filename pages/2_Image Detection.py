@@ -26,9 +26,10 @@ ROOT = HERE.parent
 logger = logging.getLogger(__name__)
 
 MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
-MODEL_LOCAL_PATH = ROOT / "./models/YOLOv8_Small_RDD.pt"
+MODEL_LOCAL_PATH = str(ROOT / "models/YOLOv8_Small_RDD.pt")
 download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
 
+# Twilio Configuration
 if "twilio" in st.secrets:
     TWILIO_ACCOUNT_SID = st.secrets["twilio"].get("account_sid", "")
     TWILIO_AUTH_TOKEN = st.secrets["twilio"].get("auth_token", "")
@@ -76,7 +77,34 @@ class Detection(NamedTuple):
     class_id: int
     label: str
     score: float
-    box: np.ndarray
+    box: list  # Changed to list for better Streamlit compatibility
+
+def generate_pdf_report(detections):
+    """Generate a PDF report for detected road damage."""
+    pdf_buffer = BytesIO()
+    pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
+    pdf.setTitle("Road Damage Detection Report")
+
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(200, 750, "Road Damage Detection Report")
+    pdf.setFont("Helvetica", 12)
+
+    y_position = 720
+    pdf.drawString(50, y_position, "Detected Cracks:")
+    y_position -= 20
+
+    for idx, det in enumerate(detections, start=1):
+        text = f"{idx}. {det.label} | Score: {det.score:.2f} | Box: {det.box}"
+        pdf.drawString(50, y_position, text)
+        y_position -= 20
+        if y_position < 50:
+            pdf.showPage()
+            pdf.setFont("Helvetica", 12)
+            y_position = 750
+
+    pdf.save()
+    pdf_buffer.seek(0)
+    return pdf_buffer
 
 st.title("Road Damage Detection - Image")
 st.write("Detect the road damage using an image. Upload the image and start detecting.")
@@ -98,19 +126,20 @@ if image_file is not None:
     detections = []
     for result in results:
         boxes = result.boxes.cpu().numpy()
-        detections = [
-           Detection(
-               class_id=int(_box.cls),
-               label=CLASSES[int(_box.cls)],
-               score=float(_box.conf),
-               box=_box.xyxy[0].astype(int),
+        for _box in boxes:
+            detections.append(
+                Detection(
+                    class_id=int(_box.cls),
+                    label=CLASSES[int(_box.cls)],
+                    score=float(_box.conf),
+                    box=_box.xyxy[0].astype(int).tolist()  # Convert to list for JSON compatibility
+                )
             )
-            for _box in boxes
-        ]
 
     if detections and user_phone_number:
         send_sms_alert(user_phone_number)
 
+    # Annotate Image
     annotated_frame = results[0].plot()
     _image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation=cv2.INTER_AREA)
 
@@ -122,6 +151,7 @@ if image_file is not None:
         st.write("#### Predictions")
         st.image(_image_pred)
 
+        # Downloadable Image
         buffer = BytesIO()
         _downloadImages = Image.fromarray(_image_pred)
         _downloadImages.save(buffer, format="PNG")
@@ -134,6 +164,7 @@ if image_file is not None:
             mime="image/png"
         )
 
+        # Downloadable PDF Report
         if detections:
             pdf_report = generate_pdf_report(detections)
             st.download_button(
@@ -142,30 +173,3 @@ if image_file is not None:
                 file_name="Road_Damage_Report.pdf",
                 mime="application/pdf"
             )
-
-def generate_pdf_report(detections):
-    """Generate a PDF report for detected road damage."""
-    pdf_buffer = BytesIO()
-    pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
-    pdf.setTitle("Road Damage Detection Report")
-
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawString(200, 750, "Road Damage Detection Report")
-    pdf.setFont("Helvetica", 12)
-
-    y_position = 720
-    pdf.drawString(50, y_position, "Detected Cracks:")
-    y_position -= 20
-
-    for idx, det in enumerate(detections, start=1):
-        text = f"{idx}. {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
-        pdf.drawString(50, y_position, text)
-        y_position -= 20
-        if y_position < 50:
-            pdf.showPage()
-            pdf.setFont("Helvetica", 12)
-            y_position = 750
-
-    pdf.save()
-    pdf_buffer.seek(0)
-    return pdf_buffer
