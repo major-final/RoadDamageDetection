@@ -34,6 +34,21 @@ else:
     st.error("Twilio secrets not found! Check your secrets.toml configuration.")
     TWILIO_ENABLED = False
 
+# Define model path
+MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
+MODEL_LOCAL_PATH = Path("models/YOLOv8_Small_RDD.pt")
+download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
+
+# Load YOLO model
+net = YOLO(str(MODEL_LOCAL_PATH))
+
+CLASSES = [
+    "Longitudinal Crack",
+    "Transverse Crack",
+    "Alligator Crack",
+    "Potholes"
+]
+
 def send_sms_alert(user_phone_number, damage_type):
     """Send an SMS alert dynamically based on user input."""
     if not TWILIO_ENABLED:
@@ -55,9 +70,6 @@ def send_sms_alert(user_phone_number, damage_type):
 TEMP_DIR = Path("./temp")
 TEMP_DIR.mkdir(exist_ok=True)
 
-temp_file_input = TEMP_DIR / "video_input.mp4"
-temp_file_infer = TEMP_DIR / "video_infer.mp4"
-
 def generate_pdf_report(damage_type, snapshot_path):
     """Generate a PDF report with damage details and snapshot."""
     pdf_path = TEMP_DIR / "Detection_Report.pdf"
@@ -75,79 +87,40 @@ def generate_pdf_report(damage_type, snapshot_path):
     c.save()
     return pdf_path
 
-st.title("Road Damage Detection - Video")
-st.write("Upload a video to detect road damage and receive notifications for detected issues.")
+st.title("Road Damage Detection - Image")
+st.write("Upload an image to detect road damage and receive notifications for detected issues.")
 
 user_phone_number = st.text_input("Enter your phone number for alerts:")
-video_file = st.file_uploader("Upload Video", type=["mp4"], disabled=False)
+image_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"], disabled=False)
 score_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
 
-def process_video(video_file, score_threshold, user_phone_number):
-    """Processes uploaded video, detects road damage, and sends only one notification per video."""
-    temp_file_input.write_bytes(video_file.read())
-    video_capture = cv2.VideoCapture(str(temp_file_input))
-
-    if not video_capture.isOpened():
-        st.error('Error opening the video file')
-        return
-
-    _width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-    _height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    _fps = video_capture.get(cv2.CAP_PROP_FPS)
-    _frame_count = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    inference_bar = st.progress(0, text="Processing video...")
-    image_location = st.empty()
-
-    fourcc_mp4 = cv2.VideoWriter_fourcc(*'mp4v')
-    cv2_writer = cv2.VideoWriter(str(temp_file_infer), fourcc_mp4, _fps, (_width, _height))
-
-    _frame_counter = 0
-    alert_sent = False  # Track if an alert has been sent
+def process_image(image_file, score_threshold, user_phone_number):
+    """Processes uploaded image, detects road damage, and sends notification."""
+    image = Image.open(image_file).convert("RGB")
+    image_np = np.array(image)
+    results = net.predict(image_np, conf=score_threshold)
+    annotated_image = results[0].plot()
     snapshot_path = TEMP_DIR / "snapshot.jpg"
-
-    while video_capture.isOpened():
-        ret, frame = video_capture.read()
-        if not ret:
-            break
-
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = YOLO(str(MODEL_LOCAL_PATH)).predict(frame, conf=score_threshold)
-        annotated_frame = results[0].plot()
-
-        for result in results:
-            boxes = result.boxes.cpu().numpy()
-            for _box in boxes:
-                detection = {
-                    "class_id": int(_box.cls),
-                    "label": CLASSES[int(_box.cls)],
-                    "score": float(_box.conf),
-                    "box": _box.xyxy[0].astype(int),
-                }
-                if detection["score"] > score_threshold and not alert_sent:
-                    send_sms_alert(user_phone_number, detection["label"])  # Send notification only once
-                    alert_sent = True  # Set flag to avoid further notifications
-                    cv2.imwrite(str(snapshot_path), cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-
-        _image_pred = cv2.resize(annotated_frame, (_width, _height), interpolation=cv2.INTER_AREA)
-        cv2_writer.write(cv2.cvtColor(_image_pred, cv2.COLOR_RGB2BGR))
-        image_location.image(_image_pred)
-        _frame_counter += 1
-        inference_bar.progress(_frame_counter / _frame_count, text="Processing video...")
-
-    inference_bar.empty()
-    video_capture.release()
-    cv2_writer.release()
-
-    st.success("Video Processed!")
-    with open(temp_file_infer, "rb") as f:
-        st.download_button("Download Processed Video", data=f, file_name="RDD_Prediction.mp4", mime="video/mp4")
+    cv2.imwrite(str(snapshot_path), cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
     
-    if alert_sent:
-        pdf_path = generate_pdf_report(detection["label"], snapshot_path)
-        with open(pdf_path, "rb") as f:
-            st.download_button("Download Detection Report", data=f, file_name="Detection_Report.pdf", mime="application/pdf")
+    for result in results:
+        boxes = result.boxes.cpu().numpy()
+        for _box in boxes:
+            detection = {
+                "class_id": int(_box.cls),
+                "label": CLASSES[int(_box.cls)],
+                "score": float(_box.conf),
+                "box": _box.xyxy[0].astype(int),
+            }
+            if detection["score"] > score_threshold:
+                send_sms_alert(user_phone_number, detection["label"])
+                break  # Only send one alert per image
 
-if video_file and user_phone_number and st.button("Process Video"):
-    st.warning(f"Processing Video: {video_file.name}")
-    process_video(video_file, score_threshold, user_phone_number)
+    st.image(annotated_image, caption="Detected Image", use_column_width=True)
+    pdf_path = generate_pdf_report(detection["label"], snapshot_path)
+    with open(pdf_path, "rb") as f:
+        st.download_button("Download Detection Report", data=f, file_name="Detection_Report.pdf", mime="application/pdf")
+
+if image_file and user_phone_number and st.button("Process Image"):
+    st.warning(f"Processing Image: {image_file.name}")
+    process_image(image_file, score_threshold, user_phone_number)
