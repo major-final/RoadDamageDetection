@@ -69,6 +69,34 @@ def send_sms_alert(user_number):
         logger.error(f"Failed to send SMS: {e}")
         st.error(f"Failed to send SMS: {e}")
 
+# ✅ Move generate_pdf_report **above** the first usage
+def generate_pdf_report(detections):
+    """Generate a PDF report for detected road damage."""
+    pdf_buffer = BytesIO()
+    pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
+    pdf.setTitle("Road Damage Detection Report")
+
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(200, 750, "Road Damage Detection Report")
+    pdf.setFont("Helvetica", 12)
+
+    y_position = 720
+    pdf.drawString(50, y_position, "Detected Cracks:")
+    y_position -= 20
+
+    for idx, det in enumerate(detections, start=1):
+        text = f"{idx}. {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
+        pdf.drawString(50, y_position, text)
+        y_position -= 20
+        if y_position < 50:
+            pdf.showPage()
+            pdf.setFont("Helvetica", 12)
+            y_position = 750
+
+    pdf.save()
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
 cache_key = "yolov8smallrdd"
 if cache_key in st.session_state:
     net = st.session_state[cache_key]
@@ -161,30 +189,3 @@ if image_file is not None:
                 )
     else:
         st.error("Model is not loaded. Check the error logs.")
-
-def generate_pdf_report(detections):
-    """Generate a PDF report for detected road damage."""
-    pdf_buffer = BytesIO()
-    pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
-    pdf.setTitle("Road Damage Detection Report")
-
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawString(200, 750, "Road Damage Detection Report")
-    pdf.setFont("Helvetica", 12)
-
-    y_position = 720
-    pdf.drawString(50, y_position, "Detected Cracks:")
-    y_position -= 20
-
-    for idx, det in enumerate(detections, start=1):
-        text = f"{idx}. {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
-        pdf.drawString(50, y_position, text)
-        y_position -= 20
-        if y_position < 50:
-            pdf.showPage()
-            pdf.setFont("Helvetica", 12)
-            y_position = 750
-
-    pdf.save()
-    pdf_buffer.seek(0)
-    return pdf_buffer
