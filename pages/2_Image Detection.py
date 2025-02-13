@@ -15,21 +15,31 @@ from sample_utils.download import download_file
 
 st.set_page_config(
     page_title="Image Detection",
-    page_icon="\U0001F4F7",
+    page_icon="📷",
     layout="centered",
     initial_sidebar_state="expanded"
 )
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
-
 logger = logging.getLogger(__name__)
 
 MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
-MODEL_LOCAL_PATH = str(ROOT / "models/YOLOv8_Small_RDD.pt")
-download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
+MODEL_LOCAL_PATH = ROOT / "models/YOLOv8_Small_RDD.pt"
 
-# Twilio Configuration
+# Ensure the model directory exists
+MODEL_LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+# Download the model if it doesn't exist
+if not MODEL_LOCAL_PATH.exists():
+    try:
+        st.info("Downloading YOLO model... This may take a few minutes.")
+        download_file(MODEL_URL, str(MODEL_LOCAL_PATH), expected_size=89569358)
+        st.success("Model downloaded successfully!")
+    except Exception as e:
+        st.error(f"Model download failed: {e}")
+
+# Twilio Setup
 if "twilio" in st.secrets:
     TWILIO_ACCOUNT_SID = st.secrets["twilio"].get("account_sid", "")
     TWILIO_AUTH_TOKEN = st.secrets["twilio"].get("auth_token", "")
@@ -63,8 +73,12 @@ cache_key = "yolov8smallrdd"
 if cache_key in st.session_state:
     net = st.session_state[cache_key]
 else:
-    net = YOLO(MODEL_LOCAL_PATH)
-    st.session_state[cache_key] = net
+    try:
+        net = YOLO(str(MODEL_LOCAL_PATH))
+        st.session_state[cache_key] = net
+    except Exception as e:
+        st.error(f"Failed to load YOLO model: {e}")
+        net = None
 
 CLASSES = [
     "Longitudinal Crack",
@@ -77,7 +91,76 @@ class Detection(NamedTuple):
     class_id: int
     label: str
     score: float
-    box: list  # Changed to list for better Streamlit compatibility
+    box: np.ndarray
+
+st.title("Road Damage Detection - Image")
+st.write("Detect road damage using an image. Upload the image and start detecting.")
+
+image_file = st.file_uploader("Upload Image", type=['png', 'jpg'])
+
+score_threshold = st.slider("Confidence Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.05)
+
+if image_file is not None:
+    image = Image.open(image_file)
+    col1, col2 = st.columns(2)
+
+    _image = np.array(image)
+    h_ori, w_ori = _image.shape[:2]
+
+    image_resized = cv2.resize(_image, (640, 640), interpolation=cv2.INTER_AREA)
+
+    if net is not None:
+        results = net.predict(image_resized, conf=score_threshold)
+
+        detections = []
+        for result in results:
+            boxes = result.boxes.cpu().numpy()
+            detections = [
+                Detection(
+                    class_id=int(_box.cls),
+                    label=CLASSES[int(_box.cls)],
+                    score=float(_box.conf),
+                    box=_box.xyxy[0].astype(int),
+                )
+                for _box in boxes
+            ]
+
+        if detections and user_phone_number:
+            send_sms_alert(user_phone_number)
+
+        annotated_frame = results[0].plot()
+        _image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation=cv2.INTER_AREA)
+
+        with col1:
+            st.write("#### Original Image")
+            st.image(_image)
+
+        with col2:
+            st.write("#### Predictions")
+            st.image(_image_pred)
+
+            buffer = BytesIO()
+            _downloadImages = Image.fromarray(_image_pred)
+            _downloadImages.save(buffer, format="PNG")
+            _downloadImagesByte = buffer.getvalue()
+
+            st.download_button(
+                label="Download Prediction Image",
+                data=_downloadImagesByte,
+                file_name="RDD_Prediction.png",
+                mime="image/png"
+            )
+
+            if detections:
+                pdf_report = generate_pdf_report(detections)
+                st.download_button(
+                    label="Download Report (PDF)",
+                    data=pdf_report,
+                    file_name="Road_Damage_Report.pdf",
+                    mime="application/pdf"
+                )
+    else:
+        st.error("Model is not loaded. Check the error logs.")
 
 def generate_pdf_report(detections):
     """Generate a PDF report for detected road damage."""
@@ -94,7 +177,7 @@ def generate_pdf_report(detections):
     y_position -= 20
 
     for idx, det in enumerate(detections, start=1):
-        text = f"{idx}. {det.label} | Score: {det.score:.2f} | Box: {det.box}"
+        text = f"{idx}. {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
         pdf.drawString(50, y_position, text)
         y_position -= 20
         if y_position < 50:
@@ -105,71 +188,3 @@ def generate_pdf_report(detections):
     pdf.save()
     pdf_buffer.seek(0)
     return pdf_buffer
-
-st.title("Road Damage Detection - Image")
-st.write("Detect the road damage using an image. Upload the image and start detecting.")
-
-image_file = st.file_uploader("Upload Image", type=['png', 'jpg'])
-
-score_threshold = st.slider("Confidence Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.05)
-
-if image_file is not None:
-    image = Image.open(image_file)
-    col1, col2 = st.columns(2)
-
-    _image = np.array(image)
-    h_ori, w_ori = _image.shape[:2]
-
-    image_resized = cv2.resize(_image, (640, 640), interpolation=cv2.INTER_AREA)
-    results = net.predict(image_resized, conf=score_threshold)
-
-    detections = []
-    for result in results:
-        boxes = result.boxes.cpu().numpy()
-        for _box in boxes:
-            detections.append(
-                Detection(
-                    class_id=int(_box.cls),
-                    label=CLASSES[int(_box.cls)],
-                    score=float(_box.conf),
-                    box=_box.xyxy[0].astype(int).tolist()  # Convert to list for JSON compatibility
-                )
-            )
-
-    if detections and user_phone_number:
-        send_sms_alert(user_phone_number)
-
-    # Annotate Image
-    annotated_frame = results[0].plot()
-    _image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation=cv2.INTER_AREA)
-
-    with col1:
-        st.write("#### Image")
-        st.image(_image)
-
-    with col2:
-        st.write("#### Predictions")
-        st.image(_image_pred)
-
-        # Downloadable Image
-        buffer = BytesIO()
-        _downloadImages = Image.fromarray(_image_pred)
-        _downloadImages.save(buffer, format="PNG")
-        _downloadImagesByte = buffer.getvalue()
-
-        st.download_button(
-            label="Download Prediction Image",
-            data=_downloadImagesByte,
-            file_name="RDD_Prediction.png",
-            mime="image/png"
-        )
-
-        # Downloadable PDF Report
-        if detections:
-            pdf_report = generate_pdf_report(detections)
-            st.download_button(
-                label="Download Report (PDF)",
-                data=pdf_report,
-                file_name="Road_Damage_Report.pdf",
-                mime="application/pdf"
-            )
