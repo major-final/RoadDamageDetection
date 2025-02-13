@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 import streamlit as st
 from twilio.rest import Client
+from fpdf import FPDF  # Import FPDF for PDF generation
 
 # Deep learning framework
 from ultralytics import YOLO
@@ -61,6 +62,29 @@ def send_sms_alert(user_number):
     except Exception as e:
         logger.error(f"Failed to send SMS: {e}")
         st.error(f"Failed to send SMS: {e}")
+
+# Function to generate PDF report
+def generate_pdf(detections):
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Arial", style='B', size=16)
+    pdf.cell(200, 10, "Road Damage Detection Report", ln=True, align='C')
+    pdf.ln(10)
+
+    pdf.set_font("Arial", size=12)
+    if detections:
+        pdf.cell(200, 10, "Detected Damage Details:", ln=True)
+        pdf.ln(5)
+        for detection in detections:
+            pdf.cell(200, 10, f"- {detection.label} (Confidence: {detection.score:.2f})", ln=True)
+    else:
+        pdf.cell(200, 10, "No road damage detected.", ln=True)
+    pdf.ln(10)
+
+    buffer = BytesIO()
+    pdf.output(buffer)
+    return buffer.getvalue()
 
 # Session-specific caching
 # Load the model
@@ -148,3 +172,12 @@ if image_file is not None:
             file_name="RDD_Prediction.png",
             mime="image/png"
         )
+
+    # Generate and download PDF report
+    pdf_data = generate_pdf(detections)
+    st.download_button(
+        label="Download Detection Report (PDF)",
+        data=pdf_data,
+        file_name="Detection_Report.pdf",
+        mime="application/pdf"
+    )
