@@ -17,7 +17,7 @@ from sample_utils.download import download_file
 
 st.set_page_config(
     page_title="Image Detection",
-    page_icon="📷",
+    page_icon="\U0001F4F7",
     layout="centered",
     initial_sidebar_state="expanded"
 )
@@ -31,13 +31,23 @@ MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv
 MODEL_LOCAL_PATH = ROOT / "./models/YOLOv8_Small_RDD.pt"
 download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
 
-# Twilio Credentials
-TWILIO_ACCOUNT_SID = "your_account_sid"
-TWILIO_AUTH_TOKEN = "your_auth_token"
-TWILIO_PHONE_NUMBER = "your_twilio_phone_number"
-USER_PHONE_NUMBER = "recipient_phone_number"
+# Load Twilio credentials from Streamlit Secrets
+if "twilio" in st.secrets:
+    TWILIO_ACCOUNT_SID = st.secrets["twilio"].get("account_sid", "")
+    TWILIO_AUTH_TOKEN = st.secrets["twilio"].get("auth_token", "")
+    TWILIO_PHONE_NUMBER = st.secrets["twilio"].get("from_phone", "")
+    USER_PHONE_NUMBER = st.secrets["twilio"].get("to_phone", "")
+    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, USER_PHONE_NUMBER])
+else:
+    st.error("Twilio secrets not found! Check your secrets.toml configuration.")
+    TWILIO_ENABLED = False
 
 def send_sms_alert():
+    """Send an SMS alert if Twilio is enabled and credentials are valid."""
+    if not TWILIO_ENABLED:
+        st.warning("Twilio is not configured correctly. Notifications are disabled.")
+        return
+    
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         message = client.messages.create(
