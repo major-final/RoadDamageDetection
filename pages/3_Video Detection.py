@@ -45,17 +45,31 @@ def send_sms_alert(user_phone_number, most_frequent_damage):
     if not TWILIO_ENABLED:
         st.warning("Twilio is not configured correctly. Notifications are disabled.")
         return
+
+    # Validate phone number format
+    if not user_phone_number.startswith("+"):
+        st.error("Invalid phone number! Use international format (e.g., +1234567890)")
+        return
+
+    # Ensure message content is not empty
+    if not most_frequent_damage.strip():
+        logging.error("Empty message detected. Skipping SMS.")
+        return
     
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        message_body = f"Alert: The most common road damage detected is '{most_frequent_damage}'. Immediate action may be required."
         message = client.messages.create(
-            body=f"Alert: The most common road damage detected is '{most_frequent_damage}'. Immediate action may be required.",
+            body=message_body,
             from_=TWILIO_PHONE_NUMBER,
             to=user_phone_number
         )
         logging.info(f"SMS alert sent: {message.sid}")
+        st.success(f"SMS Sent Successfully: {message_body}")
     except Exception as e:
         logging.error(f"Failed to send SMS: {e}")
+        st.error(f"Twilio Error: {e}")
+
 
 # Ensure temp directory exists
 TEMP_DIR = Path("./temp")
