@@ -8,9 +8,6 @@ import numpy as np
 import streamlit as st
 from ultralytics import YOLO
 from twilio.rest import Client  # Twilio for SMS notifications
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from PIL import Image
 
 from sample_utils.download import download_file
 
@@ -58,23 +55,6 @@ TEMP_DIR.mkdir(exist_ok=True)
 temp_file_input = TEMP_DIR / "video_input.mp4"
 temp_file_infer = TEMP_DIR / "video_infer.mp4"
 
-def generate_pdf_report(damage_type, snapshot_path):
-    """Generate a PDF report with damage details and snapshot."""
-    pdf_path = TEMP_DIR / "Detection_Report.pdf"
-    c = canvas.Canvas(str(pdf_path), pagesize=letter)
-    c.drawString(100, 750, "Road Damage Detection Report")
-    c.drawString(100, 730, f"Damage Type: {damage_type}")
-    c.drawString(100, 710, "Severity: Moderate/Severe")
-    c.drawString(100, 690, "Location: Unknown")
-    c.drawString(100, 670, "Date & Time: (Generated at runtime)")
-    if os.path.exists(snapshot_path):
-        img = Image.open(snapshot_path)
-        img.thumbnail((400, 300))
-        img.save(TEMP_DIR / "snapshot_resized.jpg")
-        c.drawImage(str(TEMP_DIR / "snapshot_resized.jpg"), 100, 450, width=400, height=300)
-    c.save()
-    return pdf_path
-
 st.title("Road Damage Detection - Video")
 st.write("Upload a video to detect road damage and receive notifications for detected issues.")
 
@@ -104,7 +84,6 @@ def process_video(video_file, score_threshold, user_phone_number):
 
     _frame_counter = 0
     alert_sent = False  # Track if an alert has been sent
-    snapshot_path = TEMP_DIR / "snapshot.jpg"
 
     while video_capture.isOpened():
         ret, frame = video_capture.read()
@@ -127,7 +106,6 @@ def process_video(video_file, score_threshold, user_phone_number):
                 if detection["score"] > score_threshold and not alert_sent:
                     send_sms_alert(user_phone_number, detection["label"])  # Send notification only once
                     alert_sent = True  # Set flag to avoid further notifications
-                    cv2.imwrite(str(snapshot_path), cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
 
         _image_pred = cv2.resize(annotated_frame, (_width, _height), interpolation=cv2.INTER_AREA)
         cv2_writer.write(cv2.cvtColor(_image_pred, cv2.COLOR_RGB2BGR))
@@ -142,11 +120,6 @@ def process_video(video_file, score_threshold, user_phone_number):
     st.success("Video Processed!")
     with open(temp_file_infer, "rb") as f:
         st.download_button("Download Processed Video", data=f, file_name="RDD_Prediction.mp4", mime="video/mp4")
-    
-    if alert_sent:
-        pdf_path = generate_pdf_report(detection["label"], snapshot_path)
-        with open(pdf_path, "rb") as f:
-            st.download_button("Download Detection Report", data=f, file_name="Detection_Report.pdf", mime="application/pdf")
 
 if video_file and user_phone_number and st.button("Process Video"):
     st.warning(f"Processing Video: {video_file.name}")
