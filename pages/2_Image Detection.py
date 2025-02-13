@@ -134,38 +134,38 @@ if image_file is not None:
             mime="image/png"
         )
 
-    def generate_pdf_report(detections):
-        """Generate a PDF report for detected road damage."""
-        pdf_buffer = BytesIO()
-        pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
-        pdf.setTitle("Road Damage Detection Report")
+        if detections:
+            pdf_report = generate_pdf_report(detections)
+            st.download_button(
+                label="Download Report (PDF)",
+                data=pdf_report,
+                file_name="Road_Damage_Report.pdf",
+                mime="application/pdf"
+            )
 
-        pdf.setFont("Helvetica-Bold", 16)
-        pdf.drawString(200, 750, "Road Damage Detection Report")
-        pdf.setFont("Helvetica", 12)
+def generate_pdf_report(detections):
+    """Generate a PDF report for detected road damage."""
+    pdf_buffer = BytesIO()
+    pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
+    pdf.setTitle("Road Damage Detection Report")
 
-        y_position = 720
-        pdf.drawString(50, y_position, "Detected Cracks:")
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(200, 750, "Road Damage Detection Report")
+    pdf.setFont("Helvetica", 12)
+
+    y_position = 720
+    pdf.drawString(50, y_position, "Detected Cracks:")
+    y_position -= 20
+
+    for idx, det in enumerate(detections, start=1):
+        text = f"{idx}. {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
+        pdf.drawString(50, y_position, text)
         y_position -= 20
+        if y_position < 50:
+            pdf.showPage()
+            pdf.setFont("Helvetica", 12)
+            y_position = 750
 
-        for idx, det in enumerate(detections, start=1):
-            text = f"{idx}. {det.label} | Score: {det.score:.2f} | Box: {det.box.tolist()}"
-            pdf.drawString(50, y_position, text)
-            y_position -= 20
-            if y_position < 50:
-                pdf.showPage()
-                pdf.setFont("Helvetica", 12)
-                y_position = 750
-
-        pdf.save()
-        pdf_buffer.seek(0)
-        return pdf_buffer
-
-    if detections:
-        pdf_report = generate_pdf_report(detections)
-        st.download_button(
-            label="Download Report (PDF)",
-            data=pdf_report,
-            file_name="Road_Damage_Report.pdf",
-            mime="application/pdf"
-        )
+    pdf.save()
+    pdf_buffer.seek(0)
+    return pdf_buffer
