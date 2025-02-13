@@ -5,7 +5,7 @@ st.set_page_config(
     page_icon="🛣️",
 )
 
-st.image("./resource/banner.png", use_column_width="always")
+
 st.divider()
 st.title("Road Damage Detection Application")
 
