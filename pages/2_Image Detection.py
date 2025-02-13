@@ -86,7 +86,6 @@ def generate_pdf(detections):
     buffer.seek(0)  # Move pointer to start
     return buffer.read()  # Return bytes
 
-
 # Session-specific caching
 # Load the model
 cache_key = "yolov8smallrdd"
@@ -136,11 +135,11 @@ if image_file is not None:
     for result in results:
         boxes = result.boxes.cpu().numpy()
         detections = [
-           Detection(
-               class_id=int(_box.cls),
-               label=CLASSES[int(_box.cls)],
-               score=float(_box.conf),
-               box=_box.xyxy[0].astype(int),
+            Detection(
+                class_id=int(_box.cls),
+                label=CLASSES[int(_box.cls)],
+                score=float(_box.conf),
+                box=_box.xyxy[0].astype(int),
             )
             for _box in boxes
         ]
@@ -174,11 +173,11 @@ if image_file is not None:
             mime="image/png"
         )
 
-   pdf_data = generate_pdf(detections)
-   st.download_button(
+    # Generate and provide a PDF download button
+    pdf_data = generate_pdf(detections)
+    st.download_button(
         label="Download Detection Report (PDF)",
         data=pdf_data,
         file_name="Detection_Report.pdf",
         mime="application/pdf"
     )
-
