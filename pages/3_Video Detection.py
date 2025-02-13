@@ -1,7 +1,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import List, NamedTuple
+from typing import NamedTuple
 
 import cv2
 import numpy as np
@@ -18,34 +18,40 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Debugging: Check if secrets are loaded
-st.write("Secrets available:", st.secrets.keys())
-
 # Load Twilio credentials from Streamlit Secrets
 if "twilio" in st.secrets:
     TWILIO_ACCOUNT_SID = st.secrets["twilio"].get("account_sid", "")
     TWILIO_AUTH_TOKEN = st.secrets["twilio"].get("auth_token", "")
-    TWILIO_MESSAGING_SERVICE_SID = st.secrets["twilio"].get("messaging_service_sid", "")
-    TO_PHONE_NUMBER = st.secrets["twilio"].get("to_phone", "")
     FROM_PHONE_NUMBER = st.secrets["twilio"].get("from_phone", "")
-    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TO_PHONE_NUMBER, FROM_PHONE_NUMBER])
+    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, FROM_PHONE_NUMBER])
 else:
     st.error("Twilio secrets not found! Check your secrets.toml configuration.")
     TWILIO_ENABLED = False
 
+# User input for phone number
+user_phone_number = st.text_input("Enter your phone number (including country code)", "")
+
 def send_notification(damage_type):
-    """Send an SMS notification when a crack is detected."""
+    """Send an SMS notification when road damage is detected."""
     if not TWILIO_ENABLED:
         st.warning("Twilio is not configured correctly. Notifications are disabled.")
         return
-    
-    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    message = client.messages.create(
-        body=f"Alert: {damage_type} detected on the road! Immediate action may be required.",
-        from_=FROM_PHONE_NUMBER,
-        to=TO_PHONE_NUMBER
-    )
-    print(f"Notification sent: {message.sid}")
+    if not user_phone_number:
+        st.warning("Please enter a valid phone number.")
+        return
+
+    try:
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        message = client.messages.create(
+            body=f"Alert: {damage_type} detected on the road! Immediate action may be required.",
+            from_=FROM_PHONE_NUMBER,
+            to=user_phone_number
+        )
+        st.success(f"Notification sent to {user_phone_number}")
+        logging.info(f"Notification sent: {message.sid}")
+    except Exception as e:
+        logging.error(f"Failed to send SMS: {e}")
+        st.error(f"Failed to send SMS: {e}")
 
 # Fixing Path Issues in Streamlit
 HERE = Path(".").resolve()
@@ -91,7 +97,7 @@ temp_file_input = TEMP_DIR / "video_input.mp4"
 temp_file_infer = TEMP_DIR / "video_infer.mp4"
 
 def process_video(video_file, score_threshold):
-    """Processes uploaded video, detects road damage, and sends only one notification per video."""
+    """Processes uploaded video, detects road damage, and sends notifications."""
     write_bytesio_to_file(temp_file_input, video_file)
     video_capture = cv2.VideoCapture(str(temp_file_input))
 
@@ -156,5 +162,8 @@ video_file = st.file_uploader("Upload Video", type=["mp4"], disabled=False)
 score_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.05)
 
 if video_file and st.button("Process Video"):
-    st.warning(f"Processing Video: {video_file.name}")
-    process_video(video_file, score_threshold)
+    if not user_phone_number:
+        st.error("Please enter your phone number before processing.")
+    else:
+        st.warning(f"Processing Video: {video_file.name}")
+        process_video(video_file, score_threshold)
