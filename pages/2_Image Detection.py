@@ -36,16 +36,18 @@ if "twilio" in st.secrets:
     TWILIO_ACCOUNT_SID = st.secrets["twilio"].get("account_sid", "")
     TWILIO_AUTH_TOKEN = st.secrets["twilio"].get("auth_token", "")
     TWILIO_PHONE_NUMBER = st.secrets["twilio"].get("from_phone", "")
-    USER_PHONE_NUMBER = st.secrets["twilio"].get("to_phone", "")
-    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, USER_PHONE_NUMBER])
+    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER])
 else:
     st.error("Twilio secrets not found! Check your secrets.toml configuration.")
     TWILIO_ENABLED = False
 
-def send_sms_alert():
-    """Send an SMS alert if Twilio is enabled and credentials are valid."""
-    if not TWILIO_ENABLED:
-        st.warning("Twilio is not configured correctly. Notifications are disabled.")
+# User input for phone number
+user_phone_number = st.text_input("Enter your phone number (with country code):", "")
+
+def send_sms_alert(user_number):
+    """Send an SMS alert when damage is detected."""
+    if not TWILIO_ENABLED or not user_number:
+        st.warning("Twilio is not configured, or phone number is missing!")
         return
     
     try:
@@ -53,11 +55,12 @@ def send_sms_alert():
         message = client.messages.create(
             body="Road damage detected! Please take necessary action.",
             from_=TWILIO_PHONE_NUMBER,
-            to=USER_PHONE_NUMBER
+            to=user_number
         )
-        logger.info(f"SMS alert sent: {message.sid}")
+        logger.info(f"SMS alert sent to {user_number}: {message.sid}")
     except Exception as e:
         logger.error(f"Failed to send SMS: {e}")
+        st.error(f"Failed to send SMS: {e}")
 
 # Session-specific caching
 # Load the model
@@ -117,8 +120,8 @@ if image_file is not None:
             for _box in boxes
         ]
 
-    if detections:
-        send_sms_alert()  # Send SMS alert only if damage is detected
+    if detections and user_phone_number:
+        send_sms_alert(user_phone_number)  # Send SMS alert only if damage is detected and number is provided
 
     annotated_frame = results[0].plot()
     _image_pred = cv2.resize(annotated_frame, (w_ori, h_ori), interpolation=cv2.INTER_AREA)
