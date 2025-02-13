@@ -1,14 +1,11 @@
 import os
 import logging
 from pathlib import Path
-from typing import List, NamedTuple
-
 import cv2
 import numpy as np
 import streamlit as st
 from ultralytics import YOLO
 from twilio.rest import Client  # Twilio for SMS notifications
-
 from sample_utils.download import download_file
 
 st.set_page_config(
@@ -18,8 +15,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Debugging: Check if secrets are loaded
-st.write("Secrets available:", st.secrets.keys())
+# Define model path
+MODEL_URL = "https://github.com/oracl4/RoadDamageDetection/raw/main/models/YOLOv8_Small_RDD.pt"
+MODEL_LOCAL_PATH = Path("./models/YOLOv8_Small_RDD.pt")
+
+# Download model if it doesn't exist
+if not MODEL_LOCAL_PATH.exists():
+    download_file(MODEL_URL, MODEL_LOCAL_PATH, expected_size=89569358)
+
+# Load YOLO model
+model = YOLO(str(MODEL_LOCAL_PATH))
+
+# Class labels (Make sure this matches your YOLO model's labels)
+CLASSES = ["Pothole", "Crack"]  # Modify according to your dataset
 
 # Load Twilio credentials dynamically
 if "twilio" in st.secrets:
@@ -91,20 +99,18 @@ def process_video(video_file, score_threshold, user_phone_number):
             break
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = YOLO(str(MODEL_LOCAL_PATH)).predict(frame, conf=score_threshold)
+        results = model.predict(frame, conf=score_threshold)
         annotated_frame = results[0].plot()
 
         for result in results:
             boxes = result.boxes.cpu().numpy()
             for _box in boxes:
-                detection = {
-                    "class_id": int(_box.cls),
-                    "label": CLASSES[int(_box.cls)],
-                    "score": float(_box.conf),
-                    "box": _box.xyxy[0].astype(int),
-                }
-                if detection["score"] > score_threshold and not alert_sent:
-                    send_sms_alert(user_phone_number, detection["label"])  # Send notification only once
+                class_id = int(_box.cls)
+                label = CLASSES[class_id] if class_id < len(CLASSES) else "Unknown"
+                score = float(_box.conf)
+                
+                if score > score_threshold and not alert_sent:
+                    send_sms_alert(user_phone_number, label)  # Send notification only once
                     alert_sent = True  # Set flag to avoid further notifications
 
         _image_pred = cv2.resize(annotated_frame, (_width, _height), interpolation=cv2.INTER_AREA)
