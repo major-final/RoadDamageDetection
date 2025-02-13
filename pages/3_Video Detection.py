@@ -149,4 +149,3 @@ if video_file and user_phone_number and st.button("Process Video"):
     st.warning(f"Processing Video: {video_file.name}")
     process_video(video_file, score_threshold, user_phone_number)
 
-generate a pdf report to download also
