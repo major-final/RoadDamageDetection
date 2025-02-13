@@ -82,9 +82,9 @@ def generate_pdf(detections):
     pdf.ln(10)
 
     buffer = BytesIO()
-    pdf.output(buffer, 'F')  # Save to BytesIO object
-    buffer.seek(0)  # Move pointer to start
-    return buffer.read()  # Return bytes
+    pdf.output(buffer, dest='S').encode('latin1')  # Corrected line
+    return buffer.getvalue()  # Return bytes
+
 
 # Session-specific caching
 # Load the model
