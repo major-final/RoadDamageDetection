@@ -19,6 +19,25 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="expanded"
 )
+st.write("Debugging: Printing all secrets")
+st.write(st.secrets)  # 🔍 This will print all stored secrets
+
+if "twilio" in st.secrets:
+    st.write("✅ Twilio secrets found!")  # Confirm Twilio section exists
+    TWILIO_ACCOUNT_SID = st.secrets["twilio"].get("account_sid", "")
+    TWILIO_AUTH_TOKEN = st.secrets["twilio"].get("auth_token", "")
+    TWILIO_PHONE_NUMBER = st.secrets["twilio"].get("from_phone", "")
+    TWILIO_ENABLED = all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER])
+    
+    # Debugging: Print each value
+    st.write(f"Twilio Account SID: {TWILIO_ACCOUNT_SID}")
+    st.write(f"Twilio Auth Token: {'***' if TWILIO_AUTH_TOKEN else 'MISSING'}")  # Masking token for security
+    st.write(f"Twilio Phone Number: {TWILIO_PHONE_NUMBER}")
+
+else:
+    st.error("❌ Twilio secrets not found! Check secrets.toml configuration.")
+    TWILIO_ENABLED = False
+
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
